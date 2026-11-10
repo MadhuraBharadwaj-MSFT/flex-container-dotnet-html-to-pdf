@@ -1,0 +1,6 @@
+*
+!*.Dockerfile
+!NuGet.config
+!ByocDotnetWorker.csproj
+!*.cs
+!host.json

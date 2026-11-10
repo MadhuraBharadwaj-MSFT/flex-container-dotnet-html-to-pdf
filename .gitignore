@@ -1,0 +1,12 @@
+bin/
+obj/
+publish/
+artifacts/
+.vs/
+.vscode/
+local.settings.json
+*.user
+*.suo
+*.binlog
+*.tar
+*.tar.gz
