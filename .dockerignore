@@ -4,3 +4,5 @@
 !ByocDotnetWorker.csproj
 !*.cs
 !host.json
+!tests/
+!tests/**
