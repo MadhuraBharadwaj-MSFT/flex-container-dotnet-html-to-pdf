@@ -1,3 +1,3 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("ByocDotnetWorker.Tests")]
+[assembly: InternalsVisibleTo("FlexContainerHtmlToPdf.Tests")]

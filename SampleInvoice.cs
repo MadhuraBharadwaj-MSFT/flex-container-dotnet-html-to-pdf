@@ -50,7 +50,7 @@ public static class SampleInvoice
               <h2>Payment details</h2>
               <p>Terms: Net 30</p>
               <p>Currency: USD</p>
-              <p>Reference: BYOC-PDF-DEMO</p>
+              <p>Reference: FLEX-CONTAINER-PDF-DEMO</p>
             </div>
           </section>
           <table>

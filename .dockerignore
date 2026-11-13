@@ -1,8 +1,4 @@
 *
-!*.Dockerfile
-!NuGet.config
-!ByocDotnetWorker.csproj
-!*.cs
-!host.json
-!tests/
-!tests/**
+!dotnet10.Dockerfile
+!publish/
+!publish/**

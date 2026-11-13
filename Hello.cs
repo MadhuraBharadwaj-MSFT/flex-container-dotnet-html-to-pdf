@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 
-namespace ByocDotnetWorker;
+namespace FlexContainerHtmlToPdf;
 
 public static class Hello
 {
@@ -14,7 +14,7 @@ public static class Hello
     {
         return new ContentResult
         {
-            Content = "Hello from the BYOC .NET worker.",
+            Content = "Hello from the .NET worker.",
             ContentType = "text/plain",
             StatusCode = StatusCodes.Status200OK,
         };

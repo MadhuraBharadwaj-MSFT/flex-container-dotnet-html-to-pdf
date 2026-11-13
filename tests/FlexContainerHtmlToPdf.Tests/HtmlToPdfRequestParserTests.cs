@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
 
+namespace FlexContainerHtmlToPdf.Tests;
+
 public sealed class HtmlToPdfRequestParserTests
 {
     [Fact]

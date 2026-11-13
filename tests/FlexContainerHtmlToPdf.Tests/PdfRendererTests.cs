@@ -1,3 +1,5 @@
+namespace FlexContainerHtmlToPdf.Tests;
+
 public sealed class PdfRendererTests
 {
     [Theory]

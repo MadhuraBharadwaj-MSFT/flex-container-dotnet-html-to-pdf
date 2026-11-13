@@ -20,7 +20,9 @@
 
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />
+    <Compile Remove="infra\scripts\**\*.cs" />
     <None Include="tests\**\*" />
+    <None Include="infra\scripts\**\*" />
   </ItemGroup>
 
 </Project>

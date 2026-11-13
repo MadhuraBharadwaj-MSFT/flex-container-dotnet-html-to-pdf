@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\ByocDotnetWorker.csproj" />
+    <ProjectReference Include="..\..\FlexContainerHtmlToPdf.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,12 +1,15 @@
 <!--
 ---
-name: Experimental .NET 10 HTML-to-PDF worker container for Azure Functions Flex Consumption
+name: .NET HTML-to-PDF on Azure Functions Flex Consumption containers
 description: >-
-  Render HTML to PDF with PuppeteerSharp and sandboxed Chromium in a Linux
-  AMD64 .NET 10 isolated worker-only container.
+  This sample contains an Azure Functions Flex Consumption container
+  application written for .NET 10. It accepts bounded HTML and returns a PDF
+  rendered with PuppeteerSharp and OS-installed Chromium.
 page_type: sample
 languages:
 - csharp
+- bicep
+- azdeveloper
 - dockerfile
 - powershell
 products:
@@ -17,172 +20,339 @@ urlFragment: flex-container-dotnet-html-to-pdf
 ---
 -->
 
-# Experimental .NET 10 HTML-to-PDF worker container
+# .NET HTML-to-PDF on Azure Functions Flex Consumption containers
 
-This repository is an experimental Azure Functions Flex Consumption
-worker-only container that renders HTML to PDF with PuppeteerSharp and
-Chromium.
+This sample accepts self-contained HTML in an HTTP POST request and returns a
+PDF rendered with PuppeteerSharp and the operating system's Chromium package.
+
+The Azure Functions app runs from a .NET 10 Flex Consumption container. Azure
+Developer CLI (`azd`) provisions the Azure resources, builds the container
+with Azure Container Registry Tasks, deploys it by immutable digest, and
+verifies the live endpoints.
+
+![Architecture diagram for .NET HTML-to-PDF on Azure Functions Flex Consumption containers](./img/architecture.svg)
 
 > [!IMPORTANT]
-> This sample processes untrusted HTML with strict limits and browser
-> isolation, but it is not production guidance. Complete your own security,
-> load, observability, and cost review before adopting it.
+> Azure Functions Flex Consumption container support is currently in preview.
+> Preview capabilities and deployment requirements may change before general
+> availability.
 
-## Status
+## Sample workflow
 
-The source, unit tests, Linux AMD64 image build, and real in-container Chromium
-rendering have been validated locally. The same worker image was validated end
-to end on an Azure Functions Flex Consumption FC1 app in North Central US
-(Stage) on November 11, 2026.
+1. Clone the repository.
+1. Run `azd up` to build and deploy the .NET 10 container.
+1. POST your HTML to `/api/html-to-pdf`.
+1. Save or display the returned `application/pdf` response.
 
-Azure validation confirmed both functions indexed, the Hello GET/POST contract,
-the built-in and custom HTML PDF scenarios, JavaScript isolation, controlled
-input errors, and the 20-page limit. The validation app was stopped afterward;
-this repository remains an experimental sample rather than production
-guidance.
+You may use `dotnet test` and the real Chromium integration target to verify
+the application locally. During the preview, deploy to Azure for end-to-end
+container validation.
 
-The sample deliberately does **not** set
-`FUNCTIONS_APPLICATION_DIRECTORY` in `Program.cs`, the image environment, or
-the application settings expected by the sample.
+## Prerequisites
 
-## Endpoints
+- [Git](https://git-scm.com/downloads)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
+- [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- an Azure subscription enabled for the Registry-backed Flex Consumption
+  container preview
+- permission to create resource groups, role assignments, storage, networking,
+  monitoring, Azure Container Registry, FC1 plans, and Function Apps
 
-| Method and route | Behavior |
-| --- | --- |
-| `GET /api/hello` | Returns `Hello from the BYOC .NET worker.` |
-| `POST /api/hello` | Returns `Hello from the BYOC .NET worker.` |
-| `GET /api/html-to-pdf` | Renders a deterministic built-in sample invoice. |
-| `POST /api/html-to-pdf` | Renders the raw UTF-8 `text/html` request body. |
+Local Docker isn't required for the `azd` deployment. ACR Tasks builds the
+Linux AMD64 image in Azure.
 
-A successful PDF response uses:
-
-- `Content-Type: application/pdf`
-- `Content-Disposition: attachment`
-- `Cache-Control: no-store`
-- `X-Content-Type-Options: nosniff`
-
-Example requests after deployment:
+## Initialize the project
 
 ```shell
-curl --fail --show-error \
-  --output sample-invoice.pdf \
-  "https://<function-app-hostname>/api/html-to-pdf"
+git clone https://github.com/MadhuraBharadwaj-MSFT/flex-container-dotnet-html-to-pdf.git
+cd flex-container-dotnet-html-to-pdf
+```
 
+## How it works
+
+[`HtmlToPdf.cs`](./HtmlToPdf.cs) implements the customer endpoint:
+
+```text
+POST /api/html-to-pdf
+Content-Type: text/html; charset=utf-8
+```
+
+The function:
+
+1. validates the media type, UTF-8 body, and 1 MiB input limit;
+1. launches OS-installed Chromium through PuppeteerSharp as a non-root user;
+1. disables JavaScript and blocks external subresources;
+1. enforces one concurrent render, a 30-second timeout, 20 pages, and a
+   10 MiB output limit;
+1. validates the PDF signature, trailer, page count, and output size;
+1. returns `application/pdf` with no-store and nosniff headers.
+
+GET requests render the deterministic invoice in
+[`SampleInvoice.cs`](./SampleInvoice.cs).
+[`Hello.cs`](./Hello.cs) also registers the `Hello` function used by
+deployment verification.
+
+Exact runtime and dependency pins live in
+[`FlexContainerHtmlToPdf.csproj`](./FlexContainerHtmlToPdf.csproj),
+[`NuGet.config`](./NuGet.config), and
+[`dotnet10.Dockerfile`](./dotnet10.Dockerfile). Those files are the source of
+truth for version updates. The current sample uses:
+
+- .NET 10 isolated worker with ASP.NET Core integration;
+- `Microsoft.Azure.Functions.Worker` 2.53.0-preview.1;
+- HTTP ASP.NET Core extension 2.1.2-preview.1;
+- Worker SDK 2.1.0;
+- PuppeteerSharp 25.12.0 and PdfPig 0.1.16;
+- Alpine Chromium headless shell 149.0.7827.53-r0.
+
+## How the container image is built
+
+The deployment uses
+[Azure Container Registry Tasks](https://learn.microsoft.com/azure/container-registry/container-registry-tasks-overview)
+to build the Linux AMD64 image in Azure. Customers don't need local Docker to
+deploy the sample.
+
+During `azd up`:
+
+1. The deployment hook restores, tests, and publishes the .NET application
+   and real-browser validation runner on the local machine.
+1. The package-free, standard-library C#
+   [`DeployHelper`](./infra/scripts/DeployHelper/DeploymentOperations.cs)
+   calculates a deterministic SHA-256 over the source, project, test, NuGet,
+   and Docker inputs, then stages the runtime Dockerfile plus the exact
+   published outputs.
+1. The hash becomes the image tag: `azd-<context-hash>`.
+1. An existing tag is reused; otherwise `az acr build` runs the ACR Tasks
+   quick build to assemble the runtime image and install Chromium and fonts.
+1. The workflow resolves the registry manifest digest.
+1. The Function App is pinned to
+   `registry/repository:tag@sha256:digest`.
+1. The tag is write- and delete-locked so its digest can't move.
+
+NuGet restore doesn't run inside Docker or ACR Tasks. Customers can use their
+normal NuGet configuration or approved package mirror for the local publish
+step.
+
+## Deploy to Azure
+
+Sign in:
+
+```shell
+az login
+azd auth login
+```
+
+Create an `azd` environment and set the required deployment locations:
+
+```shell
+azd env new dotnet-pdf-flex --no-prompt
+azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
+azd env set AZURE_LOCATION eastus2
+azd env set AZURE_FUNCTION_LOCATION eastus2euap
+```
+
+`AZURE_LOCATION` is used for storage, ACR, Log Analytics, and Application
+Insights. `AZURE_FUNCTION_LOCATION` is used for the FC1 plan, Function App,
+virtual network, and private endpoint. The split is required because Log
+Analytics isn't available in the preview region.
+
+Provision the resources, build the container, deploy it, and verify the Hello
+and PDF endpoints:
+
+```shell
+azd up
+```
+
+For unattended execution, use `azd up --no-prompt` after all four environment
+values are set.
+
+## Test the deployed container
+
+Get the deployed endpoint.
+
+PowerShell:
+
+```powershell
+$apiUrl = azd env get-value API_URL
+```
+
+Bash:
+
+```bash
+API_URL=$(azd env get-value API_URL)
+```
+
+POST the included [`sample.html`](./sample.html).
+
+PowerShell:
+
+```powershell
+$format = "HTTP %{http_code}; Content-Type %{content_type}; " +
+  "Bytes %{size_download}`n"
+curl.exe --fail --show-error `
+  --request POST `
+  --header "Content-Type: text/html; charset=utf-8" `
+  --data-binary "@sample.html" `
+  --output document.pdf `
+  --write-out $format `
+  "$apiUrl/api/html-to-pdf"
+```
+
+Bash:
+
+```bash
+FORMAT='HTTP %{http_code}; Content-Type %{content_type}; Bytes %{size_download}\n'
 curl --fail --show-error \
-  --header "Content-Type: text/html; charset=utf-8" \
-  --data-binary "@examples/sample.html" \
+  --request POST \
+  --header 'Content-Type: text/html; charset=utf-8' \
+  --data-binary @sample.html \
   --output document.pdf \
-  "https://<function-app-hostname>/api/html-to-pdf"
+  --write-out "$FORMAT" \
+  "$API_URL/api/html-to-pdf"
 ```
 
-## Rendering limits
+Expected output resembles:
 
-| Limit | Value |
-| --- | --- |
-| HTML request body | 1 MiB |
-| Rendering time | 30 seconds |
-| Concurrent renders per worker process | 1 |
-| Generated pages | 20 |
-| Generated PDF size | 10 MiB |
+```text
+HTTP 200; Content-Type application/pdf; Bytes 15000
+```
 
-Empty bodies, unsupported media types, invalid UTF-8, oversized input, render
-timeouts, and output-limit violations return controlled error responses.
+The byte count varies but must be greater than zero. Verify the PDF boundaries:
 
-## Browser isolation
+```shell
+dotnet run \
+  --project ./infra/scripts/DeployHelper \
+  -- validate-pdf document.pdf
+```
 
-- Runs as the .NET runtime image's non-root `app` user.
-- Keeps Chromium's process sandbox enabled; the code does not pass
-  `--no-sandbox` or `--disable-setuid-sandbox`.
-- Disables JavaScript before loading submitted HTML.
-- Blocks HTTP, HTTPS, file, FTP, and WebSocket requests.
-- Allows only embedded `data:`, `blob:`, and `about:` resources.
-- Routes any request that escapes interception to an unreachable local proxy.
-- Creates and disposes a new browser process for each render.
-- Validates the PDF signature, trailer, page count, and output size.
+Expected output:
 
-## Image contract
+```text
+Valid PDF: <non-zero byte count> bytes
+```
 
-- .NET 10 isolated worker with ASP.NET Core integration
-- `Microsoft.Azure.Functions.Worker` 2.53.0-preview.1
-- `Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore` 2.1.2-preview.1
-- `Microsoft.Azure.Functions.Worker.Sdk` 2.1.0
-- PuppeteerSharp 25.12.0 and PdfPig 0.1.16
-- Pinned .NET 10 Alpine 3.23 SDK and ASP.NET runtime images
-- Alpine Chromium headless shell 149.0.7827.53-r0
-- Linux AMD64 and `linux-musl-x64` publish output
-- Working directory `/home/site/wwwroot`
-- Direct entrypoint `dotnet ByocDotnetWorker.dll`
-- No Functions Host, Core Tools, exposed port, or standalone HTTP listener
+Open the generated PDF.
 
-The managed Azure Functions platform supplies the worker connection arguments
-when it starts the image.
-
-## Build
-
-Install Docker Desktop with Linux container support, then run:
+Windows:
 
 ```powershell
-docker build `
-  --platform linux/amd64 `
-  --progress plain `
-  --file .\dotnet10.Dockerfile `
-  --tag flex-container-dotnet-html-to-pdf:local `
-  .
+Start-Process .\document.pdf
 ```
 
-The build restores, tests, and publishes the application before creating the
-final image.
+macOS:
 
-Inspect the generated image:
+```bash
+open document.pdf
+```
+
+Linux:
+
+```bash
+xdg-open document.pdf
+```
+
+The displayed PDF should contain:
+
+- **Hello from custom HTML**
+- **This document was submitted to the HTML-to-PDF POST endpoint.**
+
+## Redeploy container changes
+
+This section isn't needed for the initial deployment. Use it later if you
+change the .NET source, NuGet dependencies, tests, or Dockerfile and want to
+deploy an updated container.
+
+Rerun `azd up`, or use the image-only workflow after the environment is
+provisioned:
+
+PowerShell:
 
 ```powershell
-docker image inspect flex-container-dotnet-html-to-pdf:local
-
-docker run --rm `
-  --entrypoint /bin/sh `
-  flex-container-dotnet-html-to-pdf:local `
-  -c 'id && pwd && chromium-headless-shell --version && dotnet --list-runtimes'
+.\infra\scripts\deployimage.ps1 -Verify
 ```
 
-The final container is not a standalone web server, so `docker run -p` is not
-an endpoint test.
+Bash:
 
-## Real Chromium integration check
-
-Build and run the dedicated validation target:
-
-```powershell
-docker build `
-  --platform linux/amd64 `
-  --target integration-test `
-  --file .\dotnet10.Dockerfile `
-  --tag flex-container-dotnet-html-to-pdf:integration `
-  .
-
-docker run --rm `
-  --security-opt seccomp=unconfined `
-  flex-container-dotnet-html-to-pdf:integration
+```bash
+sh ./infra/scripts/deployimage.sh --verify
 ```
 
-Docker Desktop's default seccomp profile blocks the namespace operation used
-to initialize Chromium's sandbox. The local integration command relaxes only
-the outer container profile; Chromium's own renderer sandbox remains enabled.
-The check performs real renders and verifies the sample invoice, JavaScript
-isolation, external-resource blocking, and the page limit.
+Unchanged image inputs reuse the existing digest.
 
-## Container build direction
+## Security
 
-The sample retains an explicit Dockerfile while the browser runtime and
-validation target are being evaluated. A follow-up can evaluate SDK-native
-container publishing through:
+Rendering untrusted HTML invokes a complex browser parser. Before production
+use, add authentication, authorization, rate limiting, tenant isolation, abuse
+monitoring, and workload-specific HTML sanitization.
 
-```powershell
-dotnet publish -t:PublishContainer
+This sample:
+
+- uses anonymous HTTP triggers only to simplify the sample;
+- keeps ACR admin and anonymous pull disabled;
+- grants the Function App a repository-scoped read-only pull credential;
+- passes registry secrets only as secure deployment parameters;
+- doesn't write secrets to source or `azd` environment outputs;
+- uses a user-assigned managed identity for runtime storage and Application
+  Insights;
+- disables shared-key and public network access on runtime storage;
+- reaches runtime storage through a private endpoint and private DNS;
+- disables FTP and SCM basic publishing credentials;
+- requires HTTPS and TLS 1.2 or later;
+- runs the application and Chromium as UID/GID `1654`;
+- keeps Chromium's renderer sandbox enabled;
+- disables JavaScript and external subresources;
+- doesn't accept arbitrary URLs for server-side fetching;
+- bounds input, output, concurrency, pages, and execution time.
+
+## Preview limitations
+
+- The direct Registry deployment uses preview Azure resource APIs.
+- Region and subscription enablement are required.
+- ACR Basic uses a public service endpoint; admin and anonymous access remain
+  disabled.
+- Runtime storage is private, but the HTTP Function endpoints are public.
+- The HTTP endpoints are anonymous.
+- The image is Linux AMD64 only.
+- The short-lived ACR pull password must be refreshed by rerunning deployment.
+- The deployment uses a split-region topology while preview-region service
+  availability is limited.
+
+## Costs
+
+The environment can incur charges for:
+
+- Flex Consumption executions;
+- Azure Container Registry storage and ACR Tasks builds;
+- the storage account and private endpoint;
+- Log Analytics and Application Insights ingestion;
+- Chromium CPU time and cold starts.
+
+## Clean up resources
+
+Review the selected environment:
+
+```shell
+azd env get-values
 ```
 
-That change must preserve the pinned runtime, Chromium dependencies, non-root
-user, working directory, entrypoint, architecture, and worker-only contents.
+Delete the resource group and all resources created for that environment:
+
+```shell
+azd down --force
+```
+
+This command doesn't delete the local repository.
+
+## Resources
+
+- [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/)
+- [Run Azure Functions locally](https://learn.microsoft.com/azure/azure-functions/functions-run-local)
+- [Azure Functions Flex Consumption](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)
+- [.NET isolated worker guide](https://learn.microsoft.com/azure/azure-functions/dotnet-isolated-process-guide)
+- [Azure Container Registry Tasks](https://learn.microsoft.com/azure/container-registry/container-registry-tasks-overview)
+- [PuppeteerSharp](https://github.com/hardkoded/puppeteer-sharp)
 
 ## License
 
-MIT
+This sample is licensed under the [MIT License](LICENSE).
